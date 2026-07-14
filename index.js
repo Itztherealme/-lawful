@@ -17,18 +17,46 @@ function getDB(id) {
 const hardbannedUsers = new Set();
 const blacklistedUsers = new Set();
 
+require('dotenv').config();
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 10000;
+
+app.get('/', (req, res) => res.send('Bot is alive fr'));
+app.listen(port, () => console.log(`Server running on port ${port}`));
+
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, Events } = require('discord.js');
+const { createClient } = require('@supabase/supabase-js');
+// ... rest of the code ...
+
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMembers, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildBans]
+});
+
 // Database
-let db = JSON.parse(fs.readFileSync('database.json', 'utf8') || '{}');
-function saveDB() { fs.writeFileSync('database.json', JSON.stringify(db, null, 2)); }
-function getDB(id) { 
-  if (!db[id]) db[id] = { wallet: 1000, bank: 0, daily_streak: 0, last_daily_time: 0, inventory: [], pets: [] }; 
-  return db[id]; 
+async function getDB(id) {
+  const { data } = await supabase.from('profiles').select('*').eq('id', id).single();
+  if (!data) {
+    const newProfile = { id, wallet: 1000, bank: 0, daily_streak: 0, last_daily_time: 0, inventory: [], pets: [] };
+    await supabase.from('profiles').insert(newProfile);
+    return newProfile;
+  }
+  return data;
+}
+
+async function saveDB(id, profile) {
+  await supabase.from('profiles').update(profile).eq('id', id);
 }
 
 const hardbannedUsers = new Set();
 const blacklistedUsers = new Set();
-const active_bounties = {}; // Stores { targetId: amount }
+const active_bounties = {}; // Should also be fetched from Supabase 'bounties' table
 let raidInfo = { active: false, participants: [] };
+
+// ... cmdHandler and rest of the code ...
+
 
 // Logic Handlers
 const cmdHandler = {
