@@ -89,6 +89,44 @@ client.on('messageCreate', async (message) => {
       await message.reply("fuck my stupid clanker life");
     }
   }
+
+  // 4. SOFTBAN COMMAND: ".l softban @user"
+  else if (command === 'softban') {
+    const target = message.mentions.members.first();
+    if (!target) {
+      return message.reply("bro i ca nt softban them fix ts");
+    }
+
+    try {
+      await target.ban({ deleteMessageSeconds: 604800, reason: 'softban' });
+      await message.guild.members.unban(target.id);
+      await message.reply("wiped their history and booted them ok");
+    } catch (err) {
+      console.error("Failed to softban:", err);
+      await message.reply("bro i cant softban them fix ts");
+    }
+  }
+
+  // 5. WARN COMMAND: ".l warn @user [reason]"
+  else if (command === 'warn') {
+    const target = message.mentions.members.first();
+    if (!target) {
+      return message.reply("bro it didnt even warn them");
+    }
+    const reason = args.slice(1).join(' ') || "being a goofy goober";
+
+    try {
+      await message.reply(`${target.user.username} got a strike for ${reason}, watch your step lil bro`);
+    } catch (err) {
+      console.error("Failed to warn:", err);
+      await message.reply("bro it didnt even warn them");
+    }
+  }
+
+  // 6. PING COMMAND: ".l ping"
+  else if (command === 'ping') {
+    await message.reply(`pong active fr | ${client.ws.ping}ms`);
+  }
 });
 
 // Grab that token safely from env
