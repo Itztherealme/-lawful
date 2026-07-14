@@ -70,10 +70,30 @@ const cmdHandler = {
 
 // Interaction Handler
 client.on('interactionCreate', async i => {
+  console.log("Interaction detected:", i.commandName);
   if (!i.isChatInputCommand()) return;
   if (blacklistedUsers.has(i.user.id)) return i.reply("bro you are blacklisted from this bot, stop trying to click my buttons lil bro");
   
   if (i.commandName === 'rob') await cmdHandler.rob(i, i.user, i.options.getUser('user'));
+});
+
+// Message Handler (Prefix)
+client.on('messageCreate', async message => {
+  if (message.author.bot) return;
+  if (!message.content.startsWith('.l ')) return;
+
+  console.log(`Prefix command detected: "${message.content}"`);
+
+  const args = message.content.slice(3).trim().split(/ +/);
+  const command = args.shift().toLowerCase();
+
+  if (blacklistedUsers.has(message.author.id)) return message.reply("bro you are blacklisted from this bot, stop trying to click my buttons lil bro");
+
+  if (command === 'rob') {
+    const target = message.mentions.users.first();
+    if (!target) return message.reply("you gotta tag someone to rob them lil bro");
+    await cmdHandler.rob(message, message.author, target);
+  }
 });
 
 client.login(process.env.DISCORD_TOKEN);
