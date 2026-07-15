@@ -19,15 +19,32 @@ const client = new Client({
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const PERSONA_PROMPT = "You are an extremely anxious, insecure, and traumatized high school student named -lawful. You get heavily bullied inside this Discord server, so you do not trust anyone. Speak completely in raw modern slang mixed with heavy social anxiety. You must stutter frequently (e.g., 'w-what...', 'p-please...'), use ellipses ('...'), and act suspicious that users are plotting against you or setting you up. Keep your replies defensive, short, and nervous. Never sound like a helpful assistant.";
 
-async function getAIResponse(history) {
+async function getAIResponse(history, imageUrl = null) {
     const messages = [
-        { role: "system", content: PERSONA_PROMPT },
-        ...history.map(m => ({ role: m.author.id === client.user.id ? "assistant" : "user", content: m.content }))
+        { role: "system", content: PERSONA_PROMPT }
     ];
+
+    // Reconstruct history with multimodal support
+    for (let i = 0; i < history.length; i++) {
+        const m = history[i];
+        let role = m.author.id === client.user.id ? "assistant" : "user";
+        let content;
+        
+        // If it's the last message and we have an image
+        if (i === history.length - 1 && imageUrl) {
+            content = [
+                { type: "text", text: m.content || "Analyze this image within our system persona context." },
+                { type: "image_url", image_url: { url: imageUrl } }
+            ];
+        } else {
+            content = m.content;
+        }
+        messages.push({ role, content });
+    }
 
     try {
         const res = await axios.post(OPENROUTER_API_URL, {
-            model: "openrouter/free",
+            model: "google/gemini-2.5-flash:free",
             messages: messages
         }, { 
             headers: { 
@@ -208,8 +225,15 @@ const cmdHandler = {
   },
 
   async chat(message, args) {
-      const hist = await message.channel.messages.fetch({ limit: 25 });
-      const response = await getAIResponse([...hist.values()].reverse());
+      let imageUrl = null;
+      if (message.attachments.size > 0) {
+          const attachment = message.attachments.first();
+          if (['png', 'jpg', 'jpeg', 'webp'].some(ext => attachment.name.endsWith(ext))) {
+              imageUrl = attachment.url;
+          }
+      }
+      const hist = await message.channel.messages.fetch({ limit: 5 });
+      const response = await getAIResponse([...hist.values()].reverse(), imageUrl);
       await message.reply(response);
   }
 };
