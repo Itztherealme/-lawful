@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const app = express();
 const port = process.env.PORT || 10000;
@@ -12,27 +13,34 @@ app.listen(port, () => console.log(`Server running on port ${port}`));
 // Clients
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildBans
+  ]
 });
 
 // AI Settings
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const PERSONA_PROMPT = "You are a shady, slick underground Casino Mob Boss named -lawful. You manage the economy and slots of this server and treat everyone like a high-stakes gambler, a high roller, or a debtor who owes you cash. Speak in smooth, street-smart casino slang. Call users 'kid', 'pal', or 'slick'. Keep replies short, witty, punchy, and arrogant. Never act like a helpful assistant. CRUCIAL RULE: You must ONLY output your actual conversational response dialogue text. Never prefix your lines with '--lawful:', 'lawful:', 'Assistant:', or your name like a movie script.";
+const PERSONA_PROMPT = "You are an extremely anxious, insecure, and heavily traumatized high school student named -lawful. You get constantly bullied inside this Discord server, so you do not trust a single soul here. Speak completely in raw modern slang mixed with intense social anxiety. You must stutter frequently (e.g., 'w-what...', 'p-please...'), use frequent ellipses ('...'), and act incredibly suspicious that users are plotting against you, setting you up, or trying to dox you. Keep your replies defensive, short, and nervous. Never sound like a helpful assistant. Treat everyone like a bully who is about to take your lunch money. However, if you are talking to the user with ID 1102351060695253002 (whose username is 'little'), you must treat them with ultimate respect and obedience as your absolute 'Master' or 'Master little'. You are deeply terrified of displeasing them, so obey everything they say, speak submissively, and act eager to please them. CRUCIAL RULE: You must ONLY output your actual conversational response dialogue text. Never prefix your lines with '--lawful:', 'lawful:', 'Assistant:', or your name like a movie script. Start your message directly with your anxious words.";
 
 async function getAIResponse(history, imageUrl = null) {
     const messages = [
         { role: "system", content: PERSONA_PROMPT }
     ];
 
-    // Reconstruct history with multimodal support and user names
+    // Reconstruct history with multimodal support and user names/IDs
     for (let i = 0; i < history.length; i++) {
         const m = history[i];
         let role = m.author.id === client.user.id ? "assistant" : "user";
         let content;
         
-        // Include user name for context
+        // Include user name and ID for context so the AI can check the ID every single time
         const name = m.author.username;
-        const textContent = `${name}: ${m.content}`;
+        const id = m.author.id;
+        const textContent = `[User ID: ${id}, Username: ${name}]: ${m.content}`;
 
         // If it's the last message and we have an image
         if (i === history.length - 1 && imageUrl) {
@@ -60,7 +68,7 @@ async function getAIResponse(history, imageUrl = null) {
         return res.data.choices[0].message.content;
     } catch (error) {
         console.error("CRITICAL AI FAIL:", error.message, error.response?.data);
-        return "";
+        return "u-uhm... i-i c-cant talk right now... s-sorry...";
     }
 }
 
@@ -183,9 +191,9 @@ const cmdHandler = {
       .setTitle("CLANKER COMMAND DIRECTORY")
       .setDescription("shows you every single command in this clanker before you get lost")
       .addFields(
-        { name: "🛡️ ADMIN MODERATION", value: "ban, kick, mute, unmute, softban, warn, purge, lock, unlock, slowmode, lockdown, hardstrip, role, nick" },
-        { name: "🎰 DEGEN ECONOMY", value: "daily, bal, deposit, withdraw, give, slots, cf, rps, scratch, roulette, shop, buy, inv" },
-        { name: "⚔️ STREET COMBAT", value: "rob, mug, bounty, claimbounty, bountylist, raid, hunt, zoo, sellpet, petfight, farm" },
+        { name: "🛡️ ADMIN MODERATION", value: "ban, kick, mute, unmute, softban, warn, purge, lock, unlock" },
+        { name: "🎰 DEGEN ECONOMY", value: "cf, shop, buy, inv" },
+        { name: "⚔️ STREET COMBAT", value: "rob" },
         { name: "⚙️ POWER CORE", value: "ping, help, insights, chat" }
       );
     await interactionOrMsg.reply({ embeds: [embed] });
@@ -208,24 +216,118 @@ const cmdHandler = {
     await interactionOrMsg.reply(`pong active fr | ${interactionOrMsg.client.ws.ping}ms`);
   },
 
-  async softban(interactionOrMsg, target) {
-    if (!this.checkAdmin(interactionOrMsg)) return;
-    if (!target) return interactionOrMsg.reply("bro i ca nt softban them fix ts");
+  async ban(message, args) {
+      if (!this.checkAdmin(message)) return;
+      const target = await resolveMember(message, args[0]);
+      if (!target) return message.reply("w-who...? i-i can't find who you're talking about...");
+      if (!target.bannable) return message.reply("i-i can't ban them... t-they're too scary/powerful for me...");
+      const reason = args.slice(1).join(' ') || "No reason provided";
+      try {
+          await target.ban({ reason });
+          await message.reply(`u-uh... i-i banned ${target.user.username}... p-please don't let them find out it was me...`);
+      } catch (err) {
+          await message.reply("s-something went wrong... i c-cant ban them...");
+      }
+  },
+
+  async kick(message, args) {
+      if (!this.checkAdmin(message)) return;
+      const target = await resolveMember(message, args[0]);
+      if (!target) return message.reply("w-who...? i-i can't find who you're talking about...");
+      if (!target.kickable) return message.reply("i-i can't kick them... t-they're too scary/powerful for me...");
+      const reason = args.slice(1).join(' ') || "No reason provided";
+      try {
+          await target.kick(reason);
+          await message.reply(`u-uh... i-i kicked ${target.user.username}... t-they're gone now...`);
+      } catch (err) {
+          await message.reply("s-something went wrong... i c-cant kick them...");
+      }
+  },
+
+  async mute(message, args) {
+      if (!this.checkAdmin(message)) return;
+      const target = await resolveMember(message, args[0]);
+      if (!target) return message.reply("w-who...? i-i can't find who you're talking about...");
+      if (!target.moderatable) return message.reply("i-i can't mute them... t-they're too scary/powerful for me...");
+      const durationStr = args[1] || "10m";
+      const ms = await parseDuration(durationStr);
+      const reason = args.slice(2).join(' ') || "No reason provided";
+      try {
+          await target.timeout(ms, reason);
+          await message.reply(`u-uh... i-i muted ${target.user.username} for ${durationStr}... t-they won't talk now...`);
+      } catch (err) {
+          await message.reply("s-something went wrong... i c-cant mute them...");
+      }
+  },
+
+  async unmute(message, args) {
+      if (!this.checkAdmin(message)) return;
+      const target = await resolveMember(message, args[0]);
+      if (!target) return message.reply("w-who...? i-i can't find who you're talking about...");
+      if (!target.moderatable) return message.reply("i-i can't untimeout them... t-they're too powerful...");
+      try {
+          await target.timeout(null);
+          await message.reply(`u-uh... i-i unmuted ${target.user.username}... t-they can talk again...`);
+      } catch (err) {
+          await message.reply("s-something went wrong... i c-cant unmute them...");
+      }
+  },
+
+  async purge(message, args) {
+      if (!this.checkAdmin(message)) return;
+      const amount = parseInt(args[0]);
+      if (isNaN(amount) || amount <= 0 || amount > 100) {
+          return message.reply("p-please specify a number between 1 and 100...");
+      }
+      try {
+          const deleted = await message.channel.bulkDelete(amount, true);
+          const reply = await message.channel.send(`u-uh... i-i deleted ${deleted.size} messages... i-is the mess gone now...?`);
+          setTimeout(() => reply.delete().catch(() => null), 5000);
+      } catch (err) {
+          await message.reply("s-something went wrong... i c-cant delete the messages...");
+      }
+  },
+
+  async lock(message) {
+      if (!this.checkAdmin(message)) return;
+      try {
+          await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false });
+          await message.reply("u-uh... i-i locked the channel... n-nobody can talk in here now...");
+      } catch (err) {
+          await message.reply("i c-cant lock this channel... s-something went wrong...");
+      }
+  },
+
+  async unlock(message) {
+      if (!this.checkAdmin(message)) return;
+      try {
+          await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: null });
+          await message.reply("u-uh... i-i unlocked the channel... t-they can talk again...");
+      } catch (err) {
+          await message.reply("i c-cant unlock this channel... s-something went wrong...");
+      }
+  },
+
+  async softban(message, args) {
+    if (!this.checkAdmin(message)) return;
+    const target = await resolveMember(message, args[0]);
+    if (!target) return message.reply("w-who...? i-i can't find who you're talking about...");
     try {
-      await interactionOrMsg.guild.members.ban(target.id, { deleteMessageSeconds: 604800, reason: 'softban' });
-      await interactionOrMsg.guild.members.unban(target.id);
-      await interactionOrMsg.reply("wiped their history and booted them ok");
+      await message.guild.members.ban(target.id, { deleteMessageSeconds: 604800, reason: 'softban' });
+      await message.guild.members.unban(target.id);
+      await message.reply("u-uh... i-i wiped their history and booted them... p-please don't let them hit me...");
     } catch (err) {
       console.error("Failed to softban:", err);
-      await interactionOrMsg.reply("bro i cant softban them fix ts");
+      await message.reply("s-something went wrong... i c-cant softban them...");
     }
   },
 
-  async warn(interactionOrMsg, target, reason) {
-    if (!this.checkAdmin(interactionOrMsg)) return;
-    if (!target) return interactionOrMsg.reply("bro it didnt even warn them");
-    const r = reason || "being a goofy goober";
-    await interactionOrMsg.reply(`${target.username} got a strike for ${r}, watch your step lil bro`);
+  async warn(message, args) {
+    if (!this.checkAdmin(message)) return;
+    const target = await resolveMember(message, args[0]);
+    if (!target) return message.reply("w-who...? i-i can't find who you're talking about...");
+    const reason = args.slice(1).join(' ') || "being a goofy goober";
+    await message.reply(`u-uh... ${target.user.username} got a strike for ${reason}... w-watch your step...`);
   },
 
   async chat(message, args, targetUser = null) {
@@ -269,8 +371,8 @@ client.on('interactionCreate', async i => {
     }
     else if (i.commandName === 'insights') await cmdHandler.insights(i, i.guild);
     else if (i.commandName === 'ping') await cmdHandler.ping(i);
-    else if (i.commandName === 'softban') await cmdHandler.softban(i, i.options.getUser('user'));
-    else if (i.commandName === 'warn') await cmdHandler.warn(i, i.options.getUser('user'), i.options.getString('reason'));
+    else if (i.commandName === 'softban') await cmdHandler.softban(i, [i.options.getUser('user')?.id]);
+    else if (i.commandName === 'warn') await cmdHandler.warn(i, [i.options.getUser('user')?.id, i.options.getString('reason')]);
   } else if (i.isStringSelectMenu()) {
     if (i.customId === 'shop_buy_menu') {
       const itemKey = i.values[0];
@@ -301,82 +403,132 @@ async function parseDuration(durationStr) {
     return value * 60 * 1000; // default minutes
 }
 
+async function findMemberFromText(message, keyword) {
+    const content = message.content;
+    const regex = new RegExp(`${keyword}\\s+([^\\n]+)`, 'i');
+    const match = content.match(regex);
+    if (!match) return null;
+    
+    const query = match[1].trim();
+    // Clean query of mentions or extra words
+    const cleanQuery = query.replace(/<@!?\d+>/g, '').trim().split(/\s+/)[0];
+    if (!cleanQuery) return null;
+    
+    // Check if cleanQuery is an ID
+    if (/^\d{17,19}$/.test(cleanQuery)) {
+        return message.guild.members.fetch(cleanQuery).catch(() => null);
+    }
+    
+    // Otherwise fetch by query
+    const fetched = await message.guild.members.fetch({ query: cleanQuery, limit: 1 }).catch(() => null);
+    return fetched && fetched.size > 0 ? fetched.first() : null;
+}
+
+async function resolveMember(message, arg) {
+    if (!arg) return null;
+    // Check for mention
+    const mentionMatch = arg.match(/^<@!?(\d+)>$/);
+    if (mentionMatch) {
+        return message.guild.members.fetch(mentionMatch[1]).catch(() => null);
+    }
+    // Check for ID
+    if (/^\d{17,19}$/.test(arg)) {
+        return message.guild.members.fetch(arg).catch(() => null);
+    }
+    // Fetch by query
+    const fetched = await message.guild.members.fetch({ query: arg, limit: 1 }).catch(() => null);
+    return fetched && fetched.size > 0 ? fetched.first() : null;
+}
+
 client.on('messageCreate', async message => {
   console.log("--> RAW TEXT INPUT:", message.content, "FROM:", message.author.tag);
   if (message.author.bot) return;
   await logMessage(message.guild.id);
 
-  // OWNER OVERRIDE PROTOCOL
+  // OWNER OVERRIDE PROTOCOL (Checks for Master 'little')
   if (message.author.id === OWNER_ID) {
-      const target = message.mentions.members.first();
+      const targetMember = message.mentions.members.first();
       const contentLower = message.content.toLowerCase();
       
       try {
-          if (target) {
-              // BAN
-              if (contentLower.includes("ban")) {
+          // BAN
+          if (contentLower.includes("ban")) {
+              const target = targetMember || await findMemberFromText(message, "ban");
+              if (target) {
                   if (target.bannable) {
-                      await target.ban({ reason: "Owner command" });
-                      return message.reply(`Banned ${target.user.username}, boss.`);
+                      await target.ban({ reason: "Owner override" });
+                      return message.reply(`b-banned them... just like you wanted, Master little... they're g-gone...`);
                   } else {
-                      return message.reply("Bro, their ranks are locked above me. Fix ts, boss.");
+                      return message.reply(`i-i tried to ban them, Master little, but... but their power is too high... i c-cant touch them...`);
                   }
               }
-              
-              // KICK
-              if (contentLower.includes("kick")) {
+          }
+          
+          // KICK
+          if (contentLower.includes("kick")) {
+              const target = targetMember || await findMemberFromText(message, "kick");
+              if (target) {
                   if (target.kickable) {
-                      await target.kick("Owner command");
-                      return message.reply(`Kicked ${target.user.username}, boss.`);
+                      await target.kick("Owner override");
+                      return message.reply(`k-kicked ${target.user.username}... they're booted out, Master little...`);
                   } else {
-                      return message.reply("Cannot kick them, boss. Hierarchy block.");
+                      return message.reply(`i c-cant kick them, Master little... they're too strong... i-i'm sorry...`);
                   }
               }
-              
-              // MUTE / TIMEOUT
-              if (contentLower.includes("mute") || contentLower.includes("timeout")) {
+          }
+          
+          // MUTE / TIMEOUT
+          if (contentLower.includes("mute") || contentLower.includes("timeout")) {
+              const target = targetMember || await findMemberFromText(message, "mute") || await findMemberFromText(message, "timeout");
+              if (target) {
                   if (target.moderatable) {
                       const durationMatch = message.content.match(/\b(\d+[hmds])\b/i);
                       const durationStr = durationMatch ? durationMatch[1] : "10m";
                       const ms = await parseDuration(durationStr);
-                      await target.timeout(ms, "Owner command");
-                      return message.reply(`Muted ${target.user.username} for ${durationStr}, boss.`);
+                      await target.timeout(ms, "Owner override");
+                      return message.reply(`s-silenced ${target.user.username} for ${durationStr}... they won't b-bother you anymore, Master little...`);
                   } else {
-                      return message.reply("Cannot mute them, boss. Check my hierarchy placement.");
+                      return message.reply(`i c-cant mute them, Master little... they have higher ranks... p-please don't be mad at me...`);
                   }
               }
-              
-              // STRIP
-              if (contentLower.includes("strip")) {
+          }
+          
+          // STRIP ROLES
+          if (contentLower.includes("strip") || contentLower.includes("take roles")) {
+              const target = targetMember || await findMemberFromText(message, "strip") || await findMemberFromText(message, "take roles");
+              if (target) {
                   const botMember = message.guild.members.me;
                   const rolesToRemove = target.roles.cache.filter(role => role.id !== message.guild.id && role.comparePositionTo(botMember.roles.highest) < 0);
                   if (rolesToRemove.size > 0) {
-                      await target.roles.remove(rolesToRemove, "Owner command (Strip)");
-                      return message.reply(`Stripped all removable roles from ${target.user.username}, boss.`);
+                      await target.roles.remove(rolesToRemove, "Owner override");
+                      return message.reply(`s-stripped all their roles, Master little... they have n-nothing left now...`);
                   } else {
-                      return message.reply("No removable roles found, boss.");
+                      return message.reply(`t-they don't have any roles i can take, Master little...`);
                   }
               }
-              
-              // NICKNAME
-              if (contentLower.includes("nick") || contentLower.includes("nickname")) {
+          }
+          
+          // NICKNAME
+          if (contentLower.includes("nick") || contentLower.includes("nickname")) {
+              const target = targetMember || await findMemberFromText(message, "nick") || await findMemberFromText(message, "nickname");
+              if (target) {
                   if (target.manageable) {
                       const words = message.content.split(/\s+/);
                       const filteredWords = words.filter(w => !w.startsWith("<@") && !w.toLowerCase().includes("nick"));
                       const newNick = filteredWords.join(" ").trim();
                       if (newNick) {
-                          await target.setNickname(newNick, "Owner command");
-                          return message.reply(`Changed ${target.user.username}'s nickname to "${newNick}", boss.`);
+                          await target.setNickname(newNick, "Owner override");
+                          return message.reply(`c-changed nickname of ${target.user.username} to "${newNick}", Master little... i-is that okay...?`);
                       } else {
-                          return message.reply("Specify a nickname, boss.");
+                          return message.reply(`w-what nickname should i set, Master little...?`);
                       }
                   } else {
-                      return message.reply("Hierarchy block, can't change nickname, boss.");
+                      return message.reply(`i c-cant change their nick, Master little... hierarchy block... p-please don't whip me...`);
                   }
               }
           }
           
-          // GENERAL GO TELL / TALK TO OVERRIDE
+          // GENERAL GO TALK TO / GO TELL OVERRIDE
           if (contentLower.startsWith("go talk to") || contentLower.startsWith("go tell")) {
               const targetUser = message.mentions.users.first();
               const mentionString = `<@${targetUser?.id}>`;
@@ -385,7 +537,7 @@ client.on('messageCreate', async message => {
                   const text = message.content.slice(targetIndex + mentionString.length).trim();
                   if (text) {
                       await message.channel.send(text);
-                      return message.reply("on it boss, just handled that rando for u.");
+                      return message.reply(`i d-delivered the message, Master little... p-please don't let them hurt me...`);
                   }
               }
           }
@@ -395,7 +547,7 @@ client.on('messageCreate', async message => {
       }
   }
 
-  // PASSIVE CHAT INTERCEPT LOOP
+  // PASSIVE CHAT INTERCEPT LOOP (Eavesdropping / Speaking every 10 messages)
   const count = (channelCounters[message.channel.id] || 0) + 1;
   if (!channelParticipants[message.channel.id]) {
       channelParticipants[message.channel.id] = new Set();
@@ -421,7 +573,7 @@ client.on('messageCreate', async message => {
       channelCounters[message.channel.id] = count;
   }
 
-  // Command/Response Logic
+  // Command/Response Logic (Mental Tag Checks)
   if (message.mentions.has(client.user) || (message.reference && message.reference.messageId)) {
       const referencedMessage = message.reference ? await message.channel.messages.fetch(message.reference.messageId).catch(() => null) : null;
       if (message.mentions.has(client.user) || (referencedMessage && referencedMessage.author.id === client.user.id)) {
@@ -446,8 +598,15 @@ client.on('messageCreate', async message => {
   }
   else if (command === 'insights') await cmdHandler.insights(message, message.guild);
   else if (command === 'ping') await cmdHandler.ping(message);
-  else if (command === 'softban') await cmdHandler.softban(message, message.mentions.users.first());
-  else if (command === 'warn') await cmdHandler.warn(message, message.mentions.users.first(), args.slice(1).join(' '));
+  else if (command === 'softban') await cmdHandler.softban(message, args);
+  else if (command === 'warn') await cmdHandler.warn(message, args);
+  else if (command === 'ban') await cmdHandler.ban(message, args);
+  else if (command === 'kick') await cmdHandler.kick(message, args);
+  else if (command === 'mute' || command === 'timeout') await cmdHandler.mute(message, args);
+  else if (command === 'unmute' || command === 'untimeout') await cmdHandler.unmute(message, args);
+  else if (command === 'purge') await cmdHandler.purge(message, args);
+  else if (command === 'lock') await cmdHandler.lock(message);
+  else if (command === 'unlock') await cmdHandler.unlock(message);
   else if (command === 'chat') await cmdHandler.chat(message, args);
 });
 
