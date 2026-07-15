@@ -306,8 +306,11 @@ client.on('messageCreate', async message => {
   lastMessageTimestamp.set(message.channel.id, now);
 
   // Command/Response Logic
-  if (message.mentions.has(client.user) || message.reference) {
-      await cmdHandler.chat(message, []);
+  if (message.mentions.has(client.user) || (message.reference && message.reference.messageId)) {
+      const referencedMessage = message.reference ? await message.channel.messages.fetch(message.reference.messageId).catch(() => null) : null;
+      if (message.mentions.has(client.user) || (referencedMessage && referencedMessage.author.id === client.user.id)) {
+          await cmdHandler.chat(message, []);
+      }
   }
 
   if (!message.content.startsWith('.l ')) return;
