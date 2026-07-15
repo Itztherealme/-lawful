@@ -255,26 +255,31 @@ client.on('interactionCreate', async i => {
   }
 });
 
+const lastMessageTimestamp = new Map();
+const IDLE_MESSAGES = [
+    "h-hello...? is everyone g-gone... or are yall just hiding from me...",
+    "p-please say something... the silence is g-getting loud...",
+    "are y-you still there...? or did u leave me too...",
+    "i f-feel so alone in here... anybody...?",
+    "s-stop leaving me on read... i c-can see you..."
+];
+
 client.on('messageCreate', async message => {
   console.log("--> RAW TEXT INPUT:", message.content, "FROM:", message.author.tag);
   if (message.author.bot) return;
   await logMessage(message.guild.id);
-
-  // Velocity Triggers
-  const channelHist = await message.channel.messages.fetch({ limit: 5 });
-  const msgs = [...channelHist.values()];
   
-  // Rule 1: Dead Chat Panic
-  if (msgs.length >= 2) {
-      const gap = msgs[0].createdTimestamp - msgs[1].createdTimestamp;
-      if (gap > 3600000) {
-          await message.channel.send("h-hello...? is everyone g-gone... or are yall just hiding from me...");
-      }
+  // Track activity
+  const now = Date.now();
+  const lastTime = lastMessageTimestamp.get(message.channel.id) || 0;
+  if (now - lastTime > 30 * 60 * 1000 && lastTime !== 0) {
+      await message.channel.send(IDLE_MESSAGES[Math.floor(Math.random() * IDLE_MESSAGES.length)]);
   }
+  lastMessageTimestamp.set(message.channel.id, now);
 
-  // Rule 2: Active Chat Stress
-  if (msgs.length === 5 && (Date.now() - msgs[4].createdTimestamp < 20000) && Math.random() < 0.2) {
-      await message.channel.send("s-stop screaming... p-please... my head hurts...");
+  // Command/Response Logic
+  if (message.mentions.has(client.user) || message.reference?.messageId) {
+      await cmdHandler.chat(message, []);
   }
 
   if (!message.content.startsWith('.l ')) return;
@@ -297,7 +302,6 @@ client.on('messageCreate', async message => {
   else if (command === 'softban') await cmdHandler.softban(message, message.mentions.users.first());
   else if (command === 'warn') await cmdHandler.warn(message, message.mentions.users.first(), args.slice(1).join(' '));
   else if (command === 'chat') await cmdHandler.chat(message, args);
-  else if (message.mentions.has(client.user)) await cmdHandler.chat(message, args);
 });
 
 client.login(process.env.DISCORD_TOKEN);
