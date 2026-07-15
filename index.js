@@ -27,13 +27,19 @@ async function getAIResponse(history) {
 
     try {
         const res = await axios.post(OPENROUTER_API_URL, {
-            model: "google/gemma-2-9b-it:free",
+            model: "openrouter/free",
             messages: messages
-        }, { headers: { 'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}` }});
+        }, { 
+            headers: { 
+                'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        console.log("AI response generated successfully");
         return res.data.choices[0].message.content;
     } catch (e) {
-        console.error("AI FAIL:", e);
-        return "u-uhm... i c-cant talk right now... s-sorry...";
+        console.error("OpenRouter API Error Details:", e.response?.data || e.message);
+        return "u-uhm... i c-cant talk right now... s-sorry... s-something went wrong...";
     }
 }
 
