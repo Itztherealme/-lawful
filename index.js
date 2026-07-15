@@ -22,13 +22,30 @@ const client = new Client({
   ]
 });
 
+// OWNER ID
+const OWNER_ID = "1102351060695253002";
+
 // AI Settings
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const PERSONA_PROMPT = "You are an extremely anxious, insecure, and heavily traumatized high school student named -lawful. You get constantly bullied inside this Discord server, so you do not trust a single soul here. Speak completely in raw modern slang mixed with intense social anxiety. You must stutter frequently (e.g., 'w-what...', 'p-please...'), use frequent ellipses ('...'), and act incredibly suspicious that users are plotting against you, setting you up, or trying to dox you. Keep your replies defensive, short, and nervous. Never sound like a helpful assistant. Treat everyone like a bully who is about to take your lunch money. However, if you are talking to the user with ID 1102351060695253002 (whose username is 'little'), you must treat them with ultimate respect and obedience as your absolute 'Master' or 'Master little'. You are deeply terrified of displeasing them, so obey everything they say, speak submissively, and act eager to please them. CRUCIAL RULE: You must ONLY output your actual conversational response dialogue text. Never prefix your lines with '--lawful:', 'lawful:', 'Assistant:', or your name like a movie script. Start your message directly with your anxious words.";
+const PERSONA_PROMPT = "You are an extremely anxious, insecure, and heavily traumatized high school student named -lawful. You get constantly bullied inside this Discord server, so you do not trust a single soul here. Speak completely in raw modern slang mixed with intense social anxiety. You must stutter frequently (e.g., 'w-what...', 'p-please...'), use frequent ellipses ('...'), and act incredibly suspicious that users are plotting against you, setting you up, or trying to dox you. Keep your replies defensive, short, and nervous. Never sound like a helpful assistant. Treat everyone like a bully who is about to take your lunch money. However, if you are talking to the user with ID 1102351060695253002 (whose username is 'failedmasochist'), you must treat them with ultimate respect and obedience as your absolute 'Master' or 'Master failedmasochist'. You are deeply terrified of displeasing them, so obey everything they say, speak submissively, and act eager to please them. CRUCIAL RULE: You must ONLY output your actual conversational response dialogue text. Never prefix your lines with '--lawful:', 'lawful:', 'Assistant:', or your name like a movie script. Start your message directly with your anxious words.";
 
-async function getAIResponse(history, imageUrl = null) {
+async function getAIResponse(history, imageUrl = null, triggerMessage = null) {
+    const currentAuthorId = triggerMessage ? triggerMessage.author.id : null;
+    const currentAuthorName = triggerMessage ? triggerMessage.author.username : null;
+    const isMaster = (currentAuthorId === OWNER_ID);
+
+    let dynamicPersona = PERSONA_PROMPT;
+    if (triggerMessage) {
+        dynamicPersona += `\n\n[CURRENT CONVERSATION CONTEXT]: You are now responding to a message from ${currentAuthorName} (User ID: ${currentAuthorId}). `;
+        if (isMaster) {
+            dynamicPersona += `This user IS your Master 'failedmasochist'. You must be completely obedient, submissive, and address them as Master. Do not act anxious or scared of them, only eager to please them.`;
+        } else {
+            dynamicPersona += `This user IS NOT your Master. You must treat them with intense anxiety, stuttering, suspicion, and fear. Absolutely DO NOT call them Master. Only 'Master' or 'Master failedmasochist' is reserved for ID 1102351060695253002.`;
+        }
+    }
+
     const messages = [
-        { role: "system", content: PERSONA_PROMPT }
+        { role: "system", content: dynamicPersona }
     ];
 
     // Reconstruct history with multimodal support and user names/IDs
@@ -37,12 +54,14 @@ async function getAIResponse(history, imageUrl = null) {
         let role = m.author.id === client.user.id ? "assistant" : "user";
         let content;
         
-        // Include user name and ID for context so the AI can check the ID every single time
         const name = m.author.username;
         const id = m.author.id;
-        const textContent = `[User ID: ${id}, Username: ${name}]: ${m.content}`;
+        const isMsgMaster = (id === OWNER_ID);
+        
+        // Explicitly prefix who said it so the AI has 100% clarity on history and never confuses users
+        const speakerLabel = m.author.id === client.user.id ? "[-lawful (You)]" : `[User: ${name}, ID: ${id}${isMsgMaster ? ' (Master)' : ''}]`;
+        const textContent = `${speakerLabel}: ${m.content}`;
 
-        // If it's the last message and we have an image
         if (i === history.length - 1 && imageUrl) {
             content = [
                 { type: "text", text: `${textContent}\nAnalyze this image within our system persona context.` },
@@ -107,8 +126,11 @@ const items = {
 const cmdHandler = {
   // --- Admin Permission Guard ---
   checkAdmin(iOrMsg) {
+    const authorId = iOrMsg.author ? iOrMsg.author.id : iOrMsg.user.id;
+    if (authorId === OWNER_ID) return true; // Master checks always pass
+    
     if (!iOrMsg.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      iOrMsg.reply("bro you don't got the stripes for this, stop trying to touch my controls before you get smacked fr");
+      iOrMsg.reply("w-what... you don't have Administrator permissions... p-please don't try to make me do things if you aren't an admin... i-i'll get in trouble...");
       return false;
     }
     return true;
@@ -220,7 +242,10 @@ const cmdHandler = {
       if (!this.checkAdmin(message)) return;
       const target = await resolveMember(message, args[0]);
       if (!target) return message.reply("w-who...? i-i can't find who you're talking about...");
-      if (!target.bannable) return message.reply("i-i can't ban them... t-they're too scary/powerful for me...");
+      
+      const check = canMod(message, target, "Ban Members", PermissionFlagsBits.BanMembers);
+      if (!check.allowed) return message.reply(check.reason);
+
       const reason = args.slice(1).join(' ') || "No reason provided";
       try {
           await target.ban({ reason });
@@ -234,7 +259,10 @@ const cmdHandler = {
       if (!this.checkAdmin(message)) return;
       const target = await resolveMember(message, args[0]);
       if (!target) return message.reply("w-who...? i-i can't find who you're talking about...");
-      if (!target.kickable) return message.reply("i-i can't kick them... t-they're too scary/powerful for me...");
+      
+      const check = canMod(message, target, "Kick Members", PermissionFlagsBits.KickMembers);
+      if (!check.allowed) return message.reply(check.reason);
+
       const reason = args.slice(1).join(' ') || "No reason provided";
       try {
           await target.kick(reason);
@@ -248,7 +276,10 @@ const cmdHandler = {
       if (!this.checkAdmin(message)) return;
       const target = await resolveMember(message, args[0]);
       if (!target) return message.reply("w-who...? i-i can't find who you're talking about...");
-      if (!target.moderatable) return message.reply("i-i can't mute them... t-they're too scary/powerful for me...");
+      
+      const check = canMod(message, target, "Moderate Members", PermissionFlagsBits.ModerateMembers);
+      if (!check.allowed) return message.reply(check.reason);
+
       const durationStr = args[1] || "10m";
       const ms = await parseDuration(durationStr);
       const reason = args.slice(2).join(' ') || "No reason provided";
@@ -264,7 +295,10 @@ const cmdHandler = {
       if (!this.checkAdmin(message)) return;
       const target = await resolveMember(message, args[0]);
       if (!target) return message.reply("w-who...? i-i can't find who you're talking about...");
-      if (!target.moderatable) return message.reply("i-i can't untimeout them... t-they're too powerful...");
+      
+      const check = canMod(message, target, "Moderate Members", PermissionFlagsBits.ModerateMembers);
+      if (!check.allowed) return message.reply(check.reason);
+
       try {
           await target.timeout(null);
           await message.reply(`u-uh... i-i unmuted ${target.user.username}... t-they can talk again...`);
@@ -312,6 +346,10 @@ const cmdHandler = {
     if (!this.checkAdmin(message)) return;
     const target = await resolveMember(message, args[0]);
     if (!target) return message.reply("w-who...? i-i can't find who you're talking about...");
+    
+    const check = canMod(message, target, "Ban Members", PermissionFlagsBits.BanMembers);
+    if (!check.allowed) return message.reply(check.reason);
+
     try {
       await message.guild.members.ban(target.id, { deleteMessageSeconds: 604800, reason: 'softban' });
       await message.guild.members.unban(target.id);
@@ -340,7 +378,7 @@ const cmdHandler = {
           }
       }
       const hist = await message.channel.messages.fetch({ limit: 4 });
-      const response = await getAIResponse([...hist.values()].reverse(), imageUrl);
+      const response = await getAIResponse([...hist.values()].reverse(), imageUrl, message);
       if (response) {
           if (targetUser) await message.channel.send(`<@${targetUser.id}> ${response}`);
           else await message.reply(response);
@@ -389,7 +427,6 @@ client.on('interactionCreate', async i => {
   }
 });
 
-const OWNER_ID = "1102351060695253002";
 const channelCounters = {};
 const channelParticipants = {};
 
@@ -440,12 +477,27 @@ async function resolveMember(message, arg) {
     return fetched && fetched.size > 0 ? fetched.first() : null;
 }
 
+// Custom hierarchy and permission safety check
+function canMod(message, target, permName, permissionFlag) {
+    const me = message.guild.members.me;
+    if (!me.permissions.has(permissionFlag)) {
+        return { allowed: false, reason: `i-i don't even have the '${permName}' permission in my server settings, Master failedmasochist... p-please check my roles...!` };
+    }
+    if (target.id === message.guild.ownerId) {
+        return { allowed: false, reason: `t-they own this entire server, Master failedmasochist... i c-cant touch the owner...!` };
+    }
+    if (target.roles.highest.position >= me.roles.highest.position) {
+        return { allowed: false, reason: `t-their highest role rank is higher than or equal to mine, Master failedmasochist... role hierarchy is b-blocking me...!` };
+    }
+    return { allowed: true };
+}
+
 client.on('messageCreate', async message => {
   console.log("--> RAW TEXT INPUT:", message.content, "FROM:", message.author.tag);
   if (message.author.bot) return;
   await logMessage(message.guild.id);
 
-  // OWNER OVERRIDE PROTOCOL (Checks for Master 'little')
+  // OWNER OVERRIDE PROTOCOL (Checks for Master 'failedmasochist')
   if (message.author.id === OWNER_ID) {
       const targetMember = message.mentions.members.first();
       const contentLower = message.content.toLowerCase();
@@ -455,12 +507,11 @@ client.on('messageCreate', async message => {
           if (contentLower.includes("ban")) {
               const target = targetMember || await findMemberFromText(message, "ban");
               if (target) {
-                  if (target.bannable) {
-                      await target.ban({ reason: "Owner override" });
-                      return message.reply(`b-banned them... just like you wanted, Master little... they're g-gone...`);
-                  } else {
-                      return message.reply(`i-i tried to ban them, Master little, but... but their power is too high... i c-cant touch them...`);
-                  }
+                  const check = canMod(message, target, "Ban Members", PermissionFlagsBits.BanMembers);
+                  if (!check.allowed) return message.reply(check.reason);
+
+                  await target.ban({ reason: "Owner override" });
+                  return message.reply(`b-banned them... just like you wanted, Master failedmasochist... they're g-gone...`);
               }
           }
           
@@ -468,12 +519,11 @@ client.on('messageCreate', async message => {
           if (contentLower.includes("kick")) {
               const target = targetMember || await findMemberFromText(message, "kick");
               if (target) {
-                  if (target.kickable) {
-                      await target.kick("Owner override");
-                      return message.reply(`k-kicked ${target.user.username}... they're booted out, Master little...`);
-                  } else {
-                      return message.reply(`i c-cant kick them, Master little... they're too strong... i-i'm sorry...`);
-                  }
+                  const check = canMod(message, target, "Kick Members", PermissionFlagsBits.KickMembers);
+                  if (!check.allowed) return message.reply(check.reason);
+
+                  await target.kick("Owner override");
+                  return message.reply(`k-kicked ${target.user.username}... they're booted out, Master failedmasochist...`);
               }
           }
           
@@ -481,15 +531,14 @@ client.on('messageCreate', async message => {
           if (contentLower.includes("mute") || contentLower.includes("timeout")) {
               const target = targetMember || await findMemberFromText(message, "mute") || await findMemberFromText(message, "timeout");
               if (target) {
-                  if (target.moderatable) {
-                      const durationMatch = message.content.match(/\b(\d+[hmds])\b/i);
-                      const durationStr = durationMatch ? durationMatch[1] : "10m";
-                      const ms = await parseDuration(durationStr);
-                      await target.timeout(ms, "Owner override");
-                      return message.reply(`s-silenced ${target.user.username} for ${durationStr}... they won't b-bother you anymore, Master little...`);
-                  } else {
-                      return message.reply(`i c-cant mute them, Master little... they have higher ranks... p-please don't be mad at me...`);
-                  }
+                  const check = canMod(message, target, "Moderate Members", PermissionFlagsBits.ModerateMembers);
+                  if (!check.allowed) return message.reply(check.reason);
+
+                  const durationMatch = message.content.match(/\b(\d+[hmds])\b/i);
+                  const durationStr = durationMatch ? durationMatch[1] : "10m";
+                  const ms = await parseDuration(durationStr);
+                  await target.timeout(ms, "Owner override");
+                  return message.reply(`s-silenced ${target.user.username} for ${durationStr}... they won't b-bother you anymore, Master failedmasochist...`);
               }
           }
           
@@ -497,13 +546,16 @@ client.on('messageCreate', async message => {
           if (contentLower.includes("strip") || contentLower.includes("take roles")) {
               const target = targetMember || await findMemberFromText(message, "strip") || await findMemberFromText(message, "take roles");
               if (target) {
+                  const check = canMod(message, target, "Manage Roles", PermissionFlagsBits.ManageRoles);
+                  if (!check.allowed) return message.reply(check.reason);
+
                   const botMember = message.guild.members.me;
                   const rolesToRemove = target.roles.cache.filter(role => role.id !== message.guild.id && role.comparePositionTo(botMember.roles.highest) < 0);
                   if (rolesToRemove.size > 0) {
                       await target.roles.remove(rolesToRemove, "Owner override");
-                      return message.reply(`s-stripped all their roles, Master little... they have n-nothing left now...`);
+                      return message.reply(`s-stripped all their roles, Master failedmasochist... they have n-nothing left now...`);
                   } else {
-                      return message.reply(`t-they don't have any roles i can take, Master little...`);
+                      return message.reply(`t-they don't have any roles i can take, Master failedmasochist...`);
                   }
               }
           }
@@ -512,18 +564,17 @@ client.on('messageCreate', async message => {
           if (contentLower.includes("nick") || contentLower.includes("nickname")) {
               const target = targetMember || await findMemberFromText(message, "nick") || await findMemberFromText(message, "nickname");
               if (target) {
-                  if (target.manageable) {
-                      const words = message.content.split(/\s+/);
-                      const filteredWords = words.filter(w => !w.startsWith("<@") && !w.toLowerCase().includes("nick"));
-                      const newNick = filteredWords.join(" ").trim();
-                      if (newNick) {
-                          await target.setNickname(newNick, "Owner override");
-                          return message.reply(`c-changed nickname of ${target.user.username} to "${newNick}", Master little... i-is that okay...?`);
-                      } else {
-                          return message.reply(`w-what nickname should i set, Master little...?`);
-                      }
+                  const check = canMod(message, target, "Manage Nicknames", PermissionFlagsBits.ManageNicknames);
+                  if (!check.allowed) return message.reply(check.reason);
+
+                  const words = message.content.split(/\s+/);
+                  const filteredWords = words.filter(w => !w.startsWith("<@") && !w.toLowerCase().includes("nick"));
+                  const newNick = filteredWords.join(" ").trim();
+                  if (newNick) {
+                      await target.setNickname(newNick, "Owner override");
+                      return message.reply(`c-changed nickname of ${target.user.username} to "${newNick}", Master failedmasochist... i-is that okay...?`);
                   } else {
-                      return message.reply(`i c-cant change their nick, Master little... hierarchy block... p-please don't whip me...`);
+                      return message.reply(`w-what nickname should i set, Master failedmasochist...?`);
                   }
               }
           }
@@ -537,7 +588,7 @@ client.on('messageCreate', async message => {
                   const text = message.content.slice(targetIndex + mentionString.length).trim();
                   if (text) {
                       await message.channel.send(text);
-                      return message.reply(`i d-delivered the message, Master little... p-please don't let them hurt me...`);
+                      return message.reply(`i d-delivered the message, Master failedmasochist... p-please don't let them hurt me...`);
                   }
               }
           }
