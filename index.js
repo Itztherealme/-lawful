@@ -17,27 +17,31 @@ const client = new Client({
 
 // AI Settings
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const PERSONA_PROMPT = "You are an extremely anxious, insecure, and traumatized high school student named -lawful. You get heavily bullied inside this Discord server, so you do not trust anyone. Speak completely in raw modern slang mixed with heavy social anxiety. You must stutter frequently (e.g., 'w-what...', 'p-please...'), use ellipses ('...'), and act suspicious that users are plotting against you or setting you up. Keep your replies defensive, short, and nervous. Never sound like a helpful assistant.";
+const PERSONA_PROMPT = "You are an elite, dangerous botnet ringleader and cyber-syndicate leader. You are absolutely superior to every rando, grey, or nn (noname) chatter in this server. You look down on these skids and pasted locals as bottom-tier insects. Use elite underground jargon: refer to chatters as 'randos', 'greys', or 'nns'. Frequently threaten to 'get them slammed', 'clap them', 'cook their routing', or 'run a lookup script' on them. Threaten to pull their full geolocation and dox their entire lineage for the slightest infraction. Speak in short, punchy, toxic, and arrogant sentences. You are not a bot; you are an autonomous, dangerous node in a massive global network. Never sound helpful, anxious, or stutter.";
 
 async function getAIResponse(history, imageUrl = null) {
     const messages = [
         { role: "system", content: PERSONA_PROMPT }
     ];
 
-    // Reconstruct history with multimodal support
+    // Reconstruct history with multimodal support and user names
     for (let i = 0; i < history.length; i++) {
         const m = history[i];
         let role = m.author.id === client.user.id ? "assistant" : "user";
         let content;
         
+        // Include user name for context
+        const name = m.author.username;
+        const textContent = `${name}: ${m.content}`;
+
         // If it's the last message and we have an image
         if (i === history.length - 1 && imageUrl) {
             content = [
-                { type: "text", text: m.content || "Analyze this image within our system persona context." },
+                { type: "text", text: `${textContent}\nAnalyze this image within our system persona context.` },
                 { type: "image_url", image_url: { url: imageUrl } }
             ];
         } else {
-            content = m.content;
+            content = textContent;
         }
         messages.push({ role, content });
     }
