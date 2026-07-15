@@ -1,3 +1,6 @@
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 10000;
 const { Client, GatewayIntentBits, PermissionFlagsBits, ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder } = require('discord.js');
 const { createClient } = require('@supabase/supabase-js');
 const axios = require('axios');
