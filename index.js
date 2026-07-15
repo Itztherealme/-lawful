@@ -1,9 +1,6 @@
-require('dotenv').config();
-const express = require('express');
-const app = express();
-const port = process.env.PORT || 10000;
 const { Client, GatewayIntentBits, PermissionFlagsBits, ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder } = require('discord.js');
 const { createClient } = require('@supabase/supabase-js');
+const axios = require('axios');
 
 // HTTP Server
 app.get('/', (req, res) => res.send('Bot is alive fr'));
@@ -14,6 +11,28 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMembers, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildBans]
 });
+
+// AI Settings
+const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
+const PERSONA_PROMPT = "You are an extremely anxious, insecure, and traumatized high school student named -lawful. You get heavily bullied inside this Discord server, so you do not trust anyone. Speak completely in raw modern slang mixed with heavy social anxiety. You must stutter frequently (e.g., 'w-what...', 'p-please...'), use ellipses ('...'), and act suspicious that users are plotting against you or setting you up. Keep your replies defensive, short, and nervous. Never sound like a helpful assistant.";
+
+async function getAIResponse(history) {
+    const messages = [
+        { role: "system", content: PERSONA_PROMPT },
+        ...history.map(m => ({ role: m.author.id === client.user.id ? "assistant" : "user", content: m.content }))
+    ];
+
+    try {
+        const res = await axios.post(OPENROUTER_API_URL, {
+            model: "google/gemma-2-9b-it:free",
+            messages: messages
+        }, { headers: { 'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}` }});
+        return res.data.choices[0].message.content;
+    } catch (e) {
+        console.error("AI FAIL:", e);
+        return "u-uhm... i c-cant talk right now... s-sorry...";
+    }
+}
 
 // Database Helpers
 async function getDB(id) {
@@ -137,14 +156,15 @@ const cmdHandler = {
         { name: "🛡️ ADMIN MODERATION", value: "ban, kick, mute, unmute, softban, warn, purge, lock, unlock, slowmode, lockdown, hardstrip, role, nick" },
         { name: "🎰 DEGEN ECONOMY", value: "daily, bal, deposit, withdraw, give, slots, cf, rps, scratch, roulette, shop, buy, inv" },
         { name: "⚔️ STREET COMBAT", value: "rob, mug, bounty, claimbounty, bountylist, raid, hunt, zoo, sellpet, petfight, farm" },
-        { name: "⚙️ POWER CORE", value: "ping, help, insights" }
+        { name: "⚙️ POWER CORE", value: "ping, help, insights, chat" }
       );
     await interactionOrMsg.reply({ embeds: [embed] });
   },
 
   async insights(interactionOrMsg, guild) {
     if (!this.checkAdmin(interactionOrMsg)) return;
-    const { data } = await supabase.from('analytics').select('*').eq('guild_id', guild.id).single();
+    const { data, error } = await supabase.from('analytics').select('*').eq('guild_id', guild.id).single();
+    if (error) { console.error('Insights error:', error); return interactionOrMsg.reply("bro I can't even see the data rn, fix ts"); }
     const embed = new EmbedBuilder()
       .setTitle(`📊 INSIGHTS FOR ${guild.name.toUpperCase()}`)
       .addFields(
@@ -152,6 +172,36 @@ const cmdHandler = {
         { name: "Total Messages Processed", value: `${data?.total_messages_processed || 0}`, inline: true }
       );
     await interactionOrMsg.reply({ embeds: [embed] });
+  },
+
+  async ping(interactionOrMsg) {
+    await interactionOrMsg.reply(`pong active fr | ${interactionOrMsg.client.ws.ping}ms`);
+  },
+
+  async softban(interactionOrMsg, target) {
+    if (!this.checkAdmin(interactionOrMsg)) return;
+    if (!target) return interactionOrMsg.reply("bro i ca nt softban them fix ts");
+    try {
+      await interactionOrMsg.guild.members.ban(target.id, { deleteMessageSeconds: 604800, reason: 'softban' });
+      await interactionOrMsg.guild.members.unban(target.id);
+      await interactionOrMsg.reply("wiped their history and booted them ok");
+    } catch (err) {
+      console.error("Failed to softban:", err);
+      await interactionOrMsg.reply("bro i cant softban them fix ts");
+    }
+  },
+
+  async warn(interactionOrMsg, target, reason) {
+    if (!this.checkAdmin(interactionOrMsg)) return;
+    if (!target) return interactionOrMsg.reply("bro it didnt even warn them");
+    const r = reason || "being a goofy goober";
+    await interactionOrMsg.reply(`${target.username} got a strike for ${r}, watch your step lil bro`);
+  },
+
+  async chat(message, args) {
+      const hist = await message.channel.messages.fetch({ limit: 25 });
+      const response = await getAIResponse([...hist.values()].reverse());
+      await message.reply(response);
   }
 };
 
@@ -171,8 +221,15 @@ client.on('interactionCreate', async i => {
     if (i.commandName === 'rob') await cmdHandler.rob(i, i.user, i.options.getUser('user'));
     else if (i.commandName === 'shop') await cmdHandler.shop(i);
     else if (i.commandName === 'lawhelp') await cmdHandler.help(i);
-    else if (i.commandName === 'cf') await cmdHandler.cf(i, i.user, i.options.getInteger('amount'));
+    else if (i.commandName === 'cf') {
+        const amt = i.options.getInteger('amount');
+        if (isNaN(amt) || amt <= 0) return i.reply("bro stop trying to flip negative money, you broke fr");
+        await cmdHandler.cf(i, i.user, amt);
+    }
     else if (i.commandName === 'insights') await cmdHandler.insights(i, i.guild);
+    else if (i.commandName === 'ping') await cmdHandler.ping(i);
+    else if (i.commandName === 'softban') await cmdHandler.softban(i, i.options.getUser('user'));
+    else if (i.commandName === 'warn') await cmdHandler.warn(i, i.options.getUser('user'), i.options.getString('reason'));
   } else if (i.isStringSelectMenu()) {
     if (i.customId === 'shop_buy_menu') {
       const itemKey = i.values[0];
@@ -192,6 +249,24 @@ client.on('interactionCreate', async i => {
 client.on('messageCreate', async message => {
   if (message.author.bot) return;
   await logMessage(message.guild.id);
+
+  // Velocity Triggers
+  const channelHist = await message.channel.messages.fetch({ limit: 5 });
+  const msgs = [...channelHist.values()];
+  
+  // Rule 1: Dead Chat Panic
+  if (msgs.length >= 2) {
+      const gap = msgs[0].createdTimestamp - msgs[1].createdTimestamp;
+      if (gap > 3600000) {
+          await message.channel.send("h-hello...? is everyone g-gone... or are yall just hiding from me...");
+      }
+  }
+
+  // Rule 2: Active Chat Stress
+  if (msgs.length === 5 && (Date.now() - msgs[4].createdTimestamp < 20000) && Math.random() < 0.2) {
+      await message.channel.send("s-stop screaming... p-please... my head hurts...");
+  }
+
   if (!message.content.startsWith('.l ')) return;
 
   const args = message.content.slice(3).trim().split(/ +/);
@@ -202,8 +277,17 @@ client.on('messageCreate', async message => {
   if (command === 'rob') await cmdHandler.rob(message, message.author, message.mentions.users.first());
   else if (command === 'shop') await cmdHandler.shop(message);
   else if (command === 'help') await cmdHandler.help(message);
-  else if (command === 'cf') await cmdHandler.cf(message, message.author, parseInt(args[0]));
+  else if (command === 'cf') {
+      const amt = parseInt(args[0]);
+      if (isNaN(amt) || amt <= 0) return message.reply("bro stop trying to flip negative money, you broke fr");
+      await cmdHandler.cf(message, message.author, amt);
+  }
   else if (command === 'insights') await cmdHandler.insights(message, message.guild);
+  else if (command === 'ping') await cmdHandler.ping(message);
+  else if (command === 'softban') await cmdHandler.softban(message, message.mentions.users.first());
+  else if (command === 'warn') await cmdHandler.warn(message, message.mentions.users.first(), args.slice(1).join(' '));
+  else if (command === 'chat') await cmdHandler.chat(message, args);
+  else if (message.mentions.has(client.user)) await cmdHandler.chat(message, args);
 });
 
 client.login(process.env.DISCORD_TOKEN);
