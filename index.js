@@ -44,7 +44,7 @@ async function getAIResponse(history, imageUrl = null) {
 
     try {
         const res = await axios.post(OPENROUTER_API_URL, {
-            model: "google/gemini-2.5-flash:free",
+            model: "openrouter/free",
             messages: messages
         }, { 
             headers: { 
