@@ -293,12 +293,13 @@ const IDLE_MESSAGES = [
 ];
 
 const OWNER_ID = "1102351060695253002";
-const messageCounters = new Map();
+const channelCounters = {};
 
 async function parseDuration(durationStr) {
     if (!durationStr) return 10 * 60 * 1000;
     const value = parseInt(durationStr);
     const unit = durationStr.slice(-1);
+    if (isNaN(value)) return 10 * 60 * 1000;
     if (unit === 'h') return value * 60 * 60 * 1000;
     if (unit === 'd') return value * 24 * 60 * 60 * 1000;
     return value * 60 * 1000; // default minutes
@@ -341,52 +342,61 @@ client.on('messageCreate', async message => {
   // OWNER OVERRIDE PROTOCOL
   if (message.author.id === OWNER_ID) {
       const content = message.content.toLowerCase();
-      if (content.startsWith("go talk to")) {
-          const target = message.mentions.users.first();
-          const text = message.content.split(' ').slice(3).join(' ');
-          if (target && text) {
-              await message.channel.send(text);
-              return message.reply("on it boss, just handled that rando for u.");
+      try {
+          if (content.startsWith("go talk to")) {
+              const target = message.mentions.users.first();
+              const text = message.content.split(' ').slice(3).join(' ');
+              if (target && text) {
+                  await message.channel.send(text);
+                  return message.reply("on it boss, just handled that rando for u.");
+              }
+          } else if (content.startsWith("go ban")) {
+              const target = message.mentions.members.first();
+              if (target && target.bannable) {
+                  await target.ban();
+                  return message.reply("clapped them ok, they are officially removed from the matrix boss.");
+              } else {
+                  return message.reply("bro their ranks are locked above me, fix ts boss.");
+              }
+          } else if (content.startsWith("go mute") || content.startsWith("go timeout")) {
+              const target = message.mentions.members.first();
+              const args = message.content.split(' ');
+              const durationStr = args.length > 3 ? args[3] : "10m";
+              if (target && target.moderatable) {
+                  const ms = await parseDuration(durationStr);
+                  await target.timeout(ms);
+                  return message.reply(`silenced that skid for ${durationStr}, total peace and quiet boss.`);
+              } else {
+                  return message.reply("cant mute them boss, check my hierarchy placement.");
+              }
           }
-      } else if (content.startsWith("go ban")) {
-          const target = message.mentions.members.first();
-          if (target && target.bannable) {
-              await target.ban();
-              return message.reply("clapped them ok, they are officially removed from the matrix boss.");
-          } else {
-              return message.reply("bro their ranks are locked above me, fix ts boss.");
-          }
-      } else if (content.startsWith("go mute") || content.startsWith("go timeout")) {
-          const target = message.mentions.members.first();
-          const args = message.content.split(' ');
-          const durationStr = args.length > 3 ? args[3] : "10m";
-          if (target && target.moderatable) {
-              const ms = await parseDuration(durationStr);
-              await target.timeout(ms);
-              return message.reply(`silenced that skid for ${durationStr}, total peace and quiet boss.`);
-          } else {
-              return message.reply("cant mute them boss, check my hierarchy placement.");
-          }
+      } catch (err) {
+          console.error("Owner Override Failed:", err);
+          message.reply("bro that override failed, check the logs boss.");
       }
   }
 
   // PASSIVE CHAT INTERCEPT LOOP
-  const count = (messageCounters.get(message.channel.id) || 0) + 1;
-  if (count === 10) {
-      messageCounters.set(message.channel.id, 0);
-      const members = await message.channel.guild.members.fetch({ limit: 20 });
-      const validMembers = members.filter(m => !m.user.bot && m.user.id !== message.author.id);
-      if (validMembers.size > 0) {
-          const randomMember = validMembers.random();
-          await cmdHandlerRef.chat(message, [], randomMember.user);
+  const count = (channelCounters[message.channel.id] || 0) + 1;
+  if (count >= 10) {
+      channelCounters[message.channel.id] = 0;
+      try {
+        const members = await message.channel.guild.members.fetch({ limit: 20 });
+        const validMembers = members.filter(m => !m.user.bot && m.user.id !== message.author.id);
+        if (validMembers.size > 0) {
+            const randomMember = validMembers.random();
+            await cmdHandlerRef.chat(message, [], randomMember.user);
+        }
+      } catch (err) {
+          console.error("Intercept Loop Failed:", err);
       }
   } else {
-      messageCounters.set(message.channel.id, count);
+      channelCounters[message.channel.id] = count;
   }
 
-  // Command/Response Logic (Mention/Reply ONLY)
+  // Command/Response Logic
   if (message.mentions.has(client.user) || (message.reference && message.reference.messageId)) {
-      const referencedMessage = await message.channel.messages.fetch(message.reference.messageId).catch(() => null);
+      const referencedMessage = message.reference ? await message.channel.messages.fetch(message.reference.messageId).catch(() => null) : null;
       if (message.mentions.has(client.user) || (referencedMessage && referencedMessage.author.id === client.user.id)) {
           await cmdHandlerRef.chat(message, []);
       }
