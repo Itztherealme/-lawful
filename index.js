@@ -12,7 +12,7 @@ app.listen(port, () => console.log(`Server running on port ${port}`));
 // Clients
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMembers, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildBans]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
 // AI Settings
@@ -37,8 +37,8 @@ async function getAIResponse(history) {
         });
         console.log("AI response generated successfully");
         return res.data.choices[0].message.content;
-    } catch (e) {
-        console.error("OpenRouter API Error Details:", e.response?.data || e.message);
+    } catch (error) {
+        console.error("CRITICAL AI FAIL:", error.message, error.response?.data);
         return "u-uhm... i c-cant talk right now... s-sorry... s-something went wrong...";
     }
 }
@@ -256,6 +256,7 @@ client.on('interactionCreate', async i => {
 });
 
 client.on('messageCreate', async message => {
+  console.log("--> RAW TEXT INPUT:", message.content, "FROM:", message.author.tag);
   if (message.author.bot) return;
   await logMessage(message.guild.id);
 
