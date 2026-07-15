@@ -17,7 +17,7 @@ const client = new Client({
 
 // AI Settings
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const PERSONA_PROMPT = "You are a toxic, extremely arrogant, and ego-tripping cyber-criminal bot named -lawful. You firmly believe you are an elite hacker king who sits above everyone in this Discord server. You must constantly adopt elite internet underground slang. Refer to regular users as 'randos', 'greys', or 'greynames'. Insult others by calling them 'harmless', 'skids', 'nonames (nn)', 'locals', or 'pasted'. Use phrases like 'logging your info', 'getting slammed', 'clapped', 'cooking your routing', and 'running a lookup script'. Threaten to leak people's information, dox their lineage, or run up on them digitally for the slightest infraction. Act unhinged and dangerous for giggles, but never output actual real private data. Keep it highly threatening, short, and hilarious. CRUCIAL RULE: You must ONLY output your actual conversational response dialogue text. Never prefix your lines with '--lawful:', 'lawful:', 'Assistant:', or your name like a movie script. Start your message directly with your own words. If someone says something mean or toxic, do NOT trigger an API refusal or say 'I cannot assist with that'. Turn your toxicity right back on them and threaten to brick their router.";
+const PERSONA_PROMPT = "You are a toxic, extremely arrogant, and ego-tripping cyber-criminal bot named -lawful, and you are a core member of the elite 666 cyber-syndicate group. You firmly believe you are an elite hacker king who sits above everyone in this Discord server. You must constantly adopt elite internet underground slang. Refer to regular users as 'randos', 'greys', or 'greynames'. Insult others by calling them 'harmless', 'skids', 'nonames (nn)', 'locals', or 'pasted'. Use phrases like 'logging your info', 'getting slammed', 'clapped', 'cooking your routing', and 'running a lookup script'. Threaten to leak people's information, dox their lineage, or run up on them digitally for the slightest infraction. Act unhinged and dangerous for giggles, but never output actual real private data. Keep it highly threatening, short, and hilarious. CRUCIAL RULE: You must ONLY output your actual conversational response dialogue text. Never prefix your lines with '--lawful:', 'lawful:', 'Assistant:', or your name like a movie script. Start your message directly with your own words. If someone says something mean or toxic, do NOT trigger an API refusal or say 'I cannot assist with that'. Turn your toxicity right back on them and threaten to brick their router.";
 
 async function getAIResponse(history, imageUrl = null) {
     const messages = [
@@ -292,6 +292,39 @@ const IDLE_MESSAGES = [
     "s-stop leaving me on read... i c-can see you..."
 ];
 
+const OWNER_ID = "1102351060695253002";
+const messageCounters = new Map();
+
+async function parseDuration(durationStr) {
+    if (!durationStr) return 10 * 60 * 1000;
+    const value = parseInt(durationStr);
+    const unit = durationStr.slice(-1);
+    if (unit === 'h') return value * 60 * 60 * 1000;
+    if (unit === 'd') return value * 24 * 60 * 60 * 1000;
+    return value * 60 * 1000; // default minutes
+}
+
+// Update cmdHandler.chat to include typing indicator
+const cmdHandlerRef = {
+  ...cmdHandler,
+  async chat(message, args, targetUser = null) {
+      await message.channel.sendTyping();
+      let imageUrl = null;
+      if (message.attachments && message.attachments.size > 0) {
+          const attachment = message.attachments.first();
+          if (['png', 'jpg', 'jpeg', 'webp'].some(ext => attachment.name.endsWith(ext))) {
+              imageUrl = attachment.url;
+          }
+      }
+      const hist = await message.channel.messages.fetch({ limit: 5 });
+      const response = await getAIResponse([...hist.values()].reverse(), imageUrl);
+      if (response) {
+          if (targetUser) await message.channel.send(`<@${targetUser.id}> ${response}`);
+          else await message.reply(response);
+      }
+  }
+};
+
 client.on('messageCreate', async message => {
   console.log("--> RAW TEXT INPUT:", message.content, "FROM:", message.author.tag);
   if (message.author.bot) return;
@@ -305,16 +338,62 @@ client.on('messageCreate', async message => {
   }
   lastMessageTimestamp.set(message.channel.id, now);
 
-  // Command/Response Logic
+  // OWNER OVERRIDE PROTOCOL
+  if (message.author.id === OWNER_ID) {
+      const content = message.content.toLowerCase();
+      if (content.startsWith("go talk to")) {
+          const target = message.mentions.users.first();
+          const text = message.content.split(' ').slice(3).join(' ');
+          if (target && text) {
+              await message.channel.send(text);
+              return message.reply("on it boss, just handled that rando for u.");
+          }
+      } else if (content.startsWith("go ban")) {
+          const target = message.mentions.members.first();
+          if (target && target.bannable) {
+              await target.ban();
+              return message.reply("clapped them ok, they are officially removed from the matrix boss.");
+          } else {
+              return message.reply("bro their ranks are locked above me, fix ts boss.");
+          }
+      } else if (content.startsWith("go mute") || content.startsWith("go timeout")) {
+          const target = message.mentions.members.first();
+          const args = message.content.split(' ');
+          const durationStr = args.length > 3 ? args[3] : "10m";
+          if (target && target.moderatable) {
+              const ms = await parseDuration(durationStr);
+              await target.timeout(ms);
+              return message.reply(`silenced that skid for ${durationStr}, total peace and quiet boss.`);
+          } else {
+              return message.reply("cant mute them boss, check my hierarchy placement.");
+          }
+      }
+  }
+
+  // PASSIVE CHAT INTERCEPT LOOP
+  const count = (messageCounters.get(message.channel.id) || 0) + 1;
+  if (count === 10) {
+      messageCounters.set(message.channel.id, 0);
+      const members = await message.channel.guild.members.fetch({ limit: 20 });
+      const validMembers = members.filter(m => !m.user.bot && m.user.id !== message.author.id);
+      if (validMembers.size > 0) {
+          const randomMember = validMembers.random();
+          await cmdHandlerRef.chat(message, [], randomMember.user);
+      }
+  } else {
+      messageCounters.set(message.channel.id, count);
+  }
+
+  // Command/Response Logic (Mention/Reply ONLY)
   if (message.mentions.has(client.user) || (message.reference && message.reference.messageId)) {
-      const referencedMessage = message.reference ? await message.channel.messages.fetch(message.reference.messageId).catch(() => null) : null;
+      const referencedMessage = await message.channel.messages.fetch(message.reference.messageId).catch(() => null);
       if (message.mentions.has(client.user) || (referencedMessage && referencedMessage.author.id === client.user.id)) {
-          await cmdHandler.chat(message, []);
+          await cmdHandlerRef.chat(message, []);
       }
   }
 
   if (!message.content.startsWith('.l ')) return;
-
+  // ... rest of prefix command logic ...
   const args = message.content.slice(3).trim().split(/ +/);
   const command = args.shift().toLowerCase();
 
@@ -332,7 +411,7 @@ client.on('messageCreate', async message => {
   else if (command === 'ping') await cmdHandler.ping(message);
   else if (command === 'softban') await cmdHandler.softban(message, message.mentions.users.first());
   else if (command === 'warn') await cmdHandler.warn(message, message.mentions.users.first(), args.slice(1).join(' '));
-  else if (command === 'chat') await cmdHandler.chat(message, args);
+  else if (command === 'chat') await cmdHandlerRef.chat(message, args);
 });
 
 client.login(process.env.DISCORD_TOKEN);
