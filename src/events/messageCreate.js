@@ -4,9 +4,6 @@ const { OWNER_ID, getAIResponse } = require('../utils/ai');
 const { resolveMember, findMemberFromText } = require('../utils/resolve');
 const { canMod, checkAdmin } = require('../utils/permission');
 
-const channelCounters = {};
-const channelParticipants = {};
-
 async function parseDuration(durationStr) {
     if (!durationStr) return 10 * 60 * 1000;
     const value = parseInt(durationStr);
@@ -111,30 +108,7 @@ module.exports = {
 			}
 		}
 
-		// 3. Passive Intercept Loop (Every 10 messages)
-		const chanId = message.channel.id;
-		channelCounters[chanId] = (channelCounters[chanId] || 0) + 1;
-		if (!channelParticipants[chanId]) channelParticipants[chanId] = new Set();
-		channelParticipants[chanId].add(message.author);
-
-		if (channelCounters[chanId] >= 10) {
-			channelCounters[chanId] = 0;
-			const participants = [...channelParticipants[chanId]];
-			channelParticipants[chanId] = new Set();
-			if (participants.length > 0) {
-				const randomUser = participants[Math.floor(Math.random() * participants.length)];
-				try {
-					await message.channel.sendTyping();
-					const hist = await message.channel.messages.fetch({ limit: 4 });
-					const response = await getAIResponse([...hist.values()].reverse(), message.client, null, message);
-					if (response) await message.channel.send(`<@${randomUser.id}> ${response}`);
-				} catch (err) {
-					console.error("[ERROR] Passive intercept failed:", err);
-				}
-			}
-		}
-
-		// 4. AI Chat (Mentions/Replies)
+		// 3. AI Chat (Mentions/Replies only)
 		const isMentioned = message.mentions.has(message.client.user);
 		let isReplyToBot = false;
 		if (message.reference) {

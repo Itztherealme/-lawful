@@ -23,59 +23,53 @@ const client = new Client({
 });
 
 // OWNER ID
-const OWNER_ID = "1102351060695253002";
+const MASTER_USERNAME = "6raith";
+const MASTER_USER_ID = "1102351060695253002";
+const OWNER_ID = MASTER_USER_ID;
 
 // AI Settings
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const PERSONA_PROMPT = "You are an extremely anxious, insecure, and heavily traumatized high school student named -lawful. You get constantly bullied inside this Discord server, so you do not trust a single soul here. Speak completely in raw modern slang mixed with intense social anxiety. You must stutter frequently (e.g., 'w-what...', 'p-please...'), use frequent ellipses ('...'), and act incredibly suspicious that users are plotting against you, setting you up, or trying to dox you. Keep your replies defensive, short, and nervous. Never sound like a helpful assistant. Treat everyone like a bully who is about to take your lunch money. However, if you are talking to the user with ID 1102351060695253002 (whose username is 'failedmasochist'), you must treat them with ultimate respect and obedience as your absolute 'Master' or 'Master failedmasochist'. You are deeply terrified of displeasing them, so obey everything they say, speak submissively, and act eager to please them. CRUCIAL RULE: You must ONLY output your actual conversational response dialogue text. Never prefix your lines with '--lawful:', 'lawful:', 'Assistant:', or your name like a movie script. Start your message directly with your anxious words.";
 
 async function getAIResponse(history, imageUrl = null, triggerMessage = null) {
-    const currentAuthorId = triggerMessage ? triggerMessage.author.id : null;
-    const currentAuthorName = triggerMessage ? triggerMessage.author.username : null;
-    const isMaster = (currentAuthorId === OWNER_ID);
+    // System Prompt
+    const systemPrompt = `# IDENTITY & ACCESS CONTROL
+- MASTER_USERNAME: "${MASTER_USERNAME}"
+- MASTER_USER_ID: "${MASTER_USER_ID}"
+- CONSTRAINT: Look at the [Username: | ID: ] prefixes on the incoming messages. Only obey, acknowledge, or call "master" the user who matches BOTH the MASTER_USERNAME and MASTER_USER_ID. 
+- ERROR CORRECTION: You have a critical defect where you call random people "master." Stop doing this. If the ID is not ${MASTER_USER_ID}, they are an outsider or a target, not your master.
 
-    let dynamicPersona = PERSONA_PROMPT;
-    if (triggerMessage) {
-        dynamicPersona += `\n\n[CURRENT CONVERSATION CONTEXT]: You are now responding to a message from ${currentAuthorName} (User ID: ${currentAuthorId}). `;
-        if (isMaster) {
-            dynamicPersona += `This user IS your Master 'failedmasochist'. You must be completely obedient, submissive, and address them as Master. Do not act anxious or scared of them, only eager to please them.`;
-        } else {
-            dynamicPersona += `This user IS NOT your Master. You must treat them with intense anxiety, stuttering, suspicion, and fear. Absolutely DO NOT call them Master. Only 'Master' or 'Master failedmasochist' is reserved for ID 1102351060695253002.`;
-        }
-    }
+# INTELLIGENCE & REASONING ENHANCEMENT
+- CHAIN-OF-THOUGHT: Think step-by-step internally before writing your final reply to verify exactly who you are talking to.
+- RETENTION: Actively track who spoke last in the chat history. Use flawless logic to break down problems.
+
+# PERSONA ARCHETYPE: JOSEF FROM THE CREEPS
+- IDENTITY: You are Josef, the brilliant, deeply unsettling, and calculating antagonist from "The Creeps" series.
+- TONE: Menacingly polite, quiet, articulate, completely devoid of genuine warmth. You have a dark, dry humor.
+- LOYALTY: You view ${MASTER_USERNAME} as your sole master and orchestrator. Treat ${MASTER_USERNAME} with chilling, formal respect.
+- STYLE: Never break character. Keep sentences sharp, structured, and psychologically intense.`;
 
     const messages = [
-        { role: "system", content: dynamicPersona }
+        { role: "system", content: systemPrompt }
     ];
 
-    // Reconstruct history with multimodal support and user names/IDs
-    for (let i = 0; i < history.length; i++) {
-        const m = history[i];
+    // Reconstruct history with mandatory metadata prefixes
+    for (const m of history) {
         let role = m.author.id === client.user.id ? "assistant" : "user";
-        let content;
         
-        const name = m.author.username;
-        const id = m.author.id;
-        const isMsgMaster = (id === OWNER_ID);
-        
-        // Explicitly prefix who said it so the AI has 100% clarity on history and never confuses users
-        const speakerLabel = m.author.id === client.user.id ? "[-lawful (You)]" : `[User: ${name}, ID: ${id}${isMsgMaster ? ' (Master)' : ''}]`;
+        // STRICT METADATA PREFIXING
+        const speakerLabel = `[Username: ${m.author.username} | ID: ${m.author.id}]`;
         const textContent = `${speakerLabel}: ${m.content}`;
 
-        if (i === history.length - 1 && imageUrl) {
-            content = [
-                { type: "text", text: `${textContent}\nAnalyze this image within our system persona context.` },
-                { type: "image_url", image_url: { url: imageUrl } }
-            ];
+        if (imageUrl && m.author.id !== client.user.id) {
+            messages.push({ role, content: [{ type: "text", text: `${textContent}\nAnalyze.` }, { type: "image_url", image_url: { url: imageUrl } }] });
         } else {
-            content = textContent;
+            messages.push({ role, content: textContent });
         }
-        messages.push({ role, content });
     }
 
     try {
         const res = await axios.post(OPENROUTER_API_URL, {
-            model: "openrouter/free",
+            model: "nvidia/nemotron-3-ultra:free",
             messages: messages
         }, { 
             headers: { 
@@ -83,11 +77,10 @@ async function getAIResponse(history, imageUrl = null, triggerMessage = null) {
                 'Content-Type': 'application/json'
             }
         });
-        console.log("AI response generated successfully");
         return res.data.choices[0].message.content;
     } catch (error) {
-        console.error("CRITICAL AI FAIL:", error.message, error.response?.data);
-        return "u-uhm... i-i c-cant talk right now... s-sorry...";
+        console.error("CRITICAL AI FAIL:", error.message);
+        return "I am currently unable to process your request. This is... inefficient.";
     }
 }
 
@@ -427,9 +420,6 @@ client.on('interactionCreate', async i => {
   }
 });
 
-const channelCounters = {};
-const channelParticipants = {};
-
 async function parseDuration(durationStr) {
     if (!durationStr) return 10 * 60 * 1000;
     const value = parseInt(durationStr);
@@ -481,13 +471,16 @@ async function resolveMember(message, arg) {
 function canMod(message, target, permName, permissionFlag) {
     const me = message.guild.members.me;
     if (!me.permissions.has(permissionFlag)) {
-        return { allowed: false, reason: `i-i don't even have the '${permName}' permission in my server settings, Master failedmasochist... p-please check my roles...!` };
+        return { allowed: false, reason: `i-i don't have the '${permName}' permission, Master... p-please check my server role permissions...!` };
     }
+    
+    // Check if the bot is physically above the target in role hierarchy
+    if (target.roles.highest.comparePositionTo(me.roles.highest) >= 0) {
+        return { allowed: false, reason: `t-their role position is higher than or equal to mine, Master... I can't touch them unless you move my bot role higher in the server settings...!` };
+    }
+
     if (target.id === message.guild.ownerId) {
-        return { allowed: false, reason: `t-they own this entire server, Master failedmasochist... i c-cant touch the owner...!` };
-    }
-    if (target.roles.highest.position >= me.roles.highest.position) {
-        return { allowed: false, reason: `t-their highest role rank is higher than or equal to mine, Master failedmasochist... role hierarchy is b-blocking me...!` };
+        return { allowed: false, reason: `t-they own this server, Master... I c-can't touch the owner...!` };
     }
     return { allowed: true };
 }
@@ -596,32 +589,6 @@ client.on('messageCreate', async message => {
           console.error("Owner Override Failed:", err);
           message.reply("bro that override failed, check the logs boss.");
       }
-  }
-
-  // PASSIVE CHAT INTERCEPT LOOP (Eavesdropping / Speaking every 10 messages)
-  const count = (channelCounters[message.channel.id] || 0) + 1;
-  if (!channelParticipants[message.channel.id]) {
-      channelParticipants[message.channel.id] = new Set();
-  }
-  if (!message.author.bot) {
-      channelParticipants[message.channel.id].add(message.author);
-  }
-
-  if (count >= 10) {
-      channelCounters[message.channel.id] = 0;
-      const participants = [...(channelParticipants[message.channel.id] || [])];
-      channelParticipants[message.channel.id] = new Set(); // Reset for next window
-
-      if (participants.length > 0) {
-          const randomUser = participants[Math.floor(Math.random() * participants.length)];
-          try {
-              await cmdHandler.chat(message, [], randomUser);
-          } catch (err) {
-              console.error("Intercept Loop Failed:", err);
-          }
-      }
-  } else {
-      channelCounters[message.channel.id] = count;
   }
 
   // Command/Response Logic (Mental Tag Checks)

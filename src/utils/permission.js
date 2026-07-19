@@ -11,14 +11,18 @@ const { OWNER_ID } = require('./ai');
  */
 function canMod(message, target, permName, permissionFlag) {
     const me = message.guild.members.me;
+
     if (!me.permissions.has(permissionFlag)) {
-        return { allowed: false, reason: `i-i don't even have the '${permName}' permission in my server settings, Master failedmasochist... p-please check my roles...!` };
+        return { allowed: false, reason: `i-i don't have the '${permName}' permission, Master... p-please check my server role permissions...!` };
     }
+    
+    // Check if the bot is physically above the target in role hierarchy
+    if (target.roles.highest.comparePositionTo(me.roles.highest) >= 0) {
+        return { allowed: false, reason: `t-their role position is higher than or equal to mine, Master... I can't touch them unless you move my bot role higher in the server settings...!` };
+    }
+
     if (target.id === message.guild.ownerId) {
-        return { allowed: false, reason: `t-they own this entire server, Master failedmasochist... i c-cant touch the owner...!` };
-    }
-    if (target.roles.highest.position >= me.roles.highest.position) {
-        return { allowed: false, reason: `t-their highest role rank is higher than or equal to mine, Master failedmasochist... role hierarchy is b-blocking me...!` };
+        return { allowed: false, reason: `t-they own this server, Master... I c-can't touch the owner...!` };
     }
     return { allowed: true };
 }
